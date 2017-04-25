@@ -32,7 +32,7 @@ class CuratorElectionServiceTest extends AkkaUnitTest with Mockito with ExitDisa
       conf.zkTimeoutDuration returns 250.milliseconds
 
       "shut Marathon down on a NonFatal" in {
-        service.offerLeadershipImpl()
+        service.volunteerToLeadImpl()
 
         exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
       }

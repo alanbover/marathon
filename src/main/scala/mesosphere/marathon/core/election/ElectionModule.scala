@@ -4,7 +4,7 @@ package core.election
 import akka.actor.ActorSystem
 import akka.event.EventStream
 import mesosphere.marathon.core.base.LifecycleState
-import mesosphere.marathon.core.election.impl.{ CuratorElectionService, ExponentialBackoff, PseudoElectionService }
+import mesosphere.marathon.core.election.impl.{ CuratorElectionService, PseudoElectionService }
 
 class ElectionModule(
     config: MarathonConf,
@@ -13,16 +13,14 @@ class ElectionModule(
     hostPort: String,
     lifecycleState: LifecycleState) {
 
-  private lazy val backoff = new ExponentialBackoff(name = "offerLeadership")
   lazy val service: ElectionService = if (config.highlyAvailable()) {
     config.leaderElectionBackend.get match {
       case Some("curator") =>
         new CuratorElectionService(
           config,
+          hostPort,
           system,
           eventStream,
-          hostPort,
-          backoff,
           lifecycleState
         )
       case backend: Option[String] =>
@@ -30,10 +28,9 @@ class ElectionModule(
     }
   } else {
     new PseudoElectionService(
+      hostPort,
       system,
       eventStream,
-      hostPort,
-      backoff,
       lifecycleState
     )
   }

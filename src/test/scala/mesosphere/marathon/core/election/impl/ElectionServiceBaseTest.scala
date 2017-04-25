@@ -35,7 +35,7 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       val electionService = new ElectionServiceBase(
         system, f.events, f.backoff, LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = ???
+        override protected def volunteerToLeadImpl(): Unit = ???
         override def leaderHostPortImpl: Option[String] = ???
         override def localHostPort: String = ???
       }
@@ -48,18 +48,18 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       val electionService = new ElectionServiceBase(
         system, f.events, f.backoff, LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = ()
+        override protected def volunteerToLeadImpl(): Unit = ()
         override def leaderHostPortImpl: Option[String] = ???
         override def localHostPort: String = ???
       }
 
       Given("leadership is offered")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
       Then("state becomes Offered")
       eventually { electionService.state should equal(Offered(f.candidate)) }
 
       Given("leadership is offered again")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
       Then("state is still Offered")
       eventually { electionService.state should equal(Offered(f.candidate)) }
     }
@@ -70,13 +70,13 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
         system, f.events,
         new ExponentialBackoff(initialValue = 5.seconds), LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = ()
+        override protected def volunteerToLeadImpl(): Unit = ()
         override def leaderHostPortImpl: Option[String] = ???
         override def localHostPort: String = ???
       }
 
       Given("leadership is offered")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
       Then("state becomes Offering")
       eventually { electionService.state should equal(Offering(f.candidate)) }
     }
@@ -86,7 +86,7 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       val electionService = new ElectionServiceBase(
         system, f.events, f.backoff, LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = ()
+        override protected def volunteerToLeadImpl(): Unit = ()
         override def leaderHostPortImpl: Option[String] = ???
         override def localHostPort: String = ???
       }
@@ -97,7 +97,7 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       eventually { electionService.state should equal(Idle(None)) }
 
       Given("leadership is offered and then abdicated")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
       eventually { electionService.state should equal(Offered(f.candidate)) }
       electionService.abdicateLeadership()
       Then("state is Abdicating with reoffer=false")
@@ -124,17 +124,17 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       val electionService = new ElectionServiceBase(
         system, f.events, f.backoff, LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = ()
+        override protected def volunteerToLeadImpl(): Unit = ()
         override def leaderHostPortImpl: Option[String] = ???
         override def localHostPort: String = ???
       }
 
       Given("leadership is offered, immediately abdicated and then offered again")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
       electionService.abdicateLeadership()
       eventually { electionService.state should equal(Abdicating(f.candidate, reoffer = false)) }
       Then("state is still Abdicating, but with reoffer=true")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
       eventually { electionService.state should equal(Abdicating(f.candidate, reoffer = true)) }
     }
 
@@ -145,7 +145,7 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       val electionService = new ElectionServiceBase(
         system, events, f.backoff, LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = {
+        override protected def volunteerToLeadImpl(): Unit = {
           startLeadership(_ => stopLeadership())
         }
         override def leaderHostPortImpl: Option[String] = ???
@@ -153,7 +153,7 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       }
 
       Given("this instance is becoming leader")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
       eventually { electionService.state.isInstanceOf[Leading] }
 
       Then("the candidate is called, then an event is published")
@@ -175,13 +175,13 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       val electionService = new ElectionServiceBase(
         system, f.events, f.backoff, LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = () // do not call startLeadership here
+        override protected def volunteerToLeadImpl(): Unit = () // do not call startLeadership here
         override def leaderHostPortImpl: Option[String] = ???
         override def localHostPort: String = ???
       }
 
       Given("this instance is becoming leader and then abdicating with reoffer=true")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
       eventually { electionService.state.isInstanceOf[Leading] }
       electionService.abdicateLeadership(reoffer = true)
 
@@ -197,7 +197,7 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       val electionService = new ElectionServiceBase(
         system, f.events, backoff, LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = {
+        override protected def volunteerToLeadImpl(): Unit = {
           startLeadership(_ => stopLeadership())
         }
         override def leaderHostPortImpl: Option[String] = ???
@@ -213,7 +213,7 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       })
 
       Given("this instance is offering leadership with reoffer=true and candidate.startLeadershop throws an exception")
-      electionService.offerLeadership(f.candidate)
+      electionService.volunteerToLead(f.candidate)
 
       Then("leadership is re-offered again and again, and the backoff timeout increases")
       eventually { backoff.value() >= 0.09.seconds }
@@ -231,7 +231,7 @@ class ElectionServiceBaseTest extends AkkaUnitTest with Eventually {
       val electionService = new ElectionServiceBase(
         system, f.events, f.backoff, LifecycleState.Ignore
       ) {
-        override protected def offerLeadershipImpl(): Unit = {
+        override protected def volunteerToLeadImpl(): Unit = {
           startLeadership(_ => stopLeadership())
         }
         override def leaderHostPortImpl: Option[String] = {

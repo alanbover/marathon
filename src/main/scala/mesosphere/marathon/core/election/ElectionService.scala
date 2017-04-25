@@ -36,22 +36,21 @@ trait ElectionService {
   def offerLeadership(candidate: ElectionCandidate): Unit
 
   /**
-    * abdicateLeadership is called to resign from leadership. If this instance is no leader, this
-    * call does nothing for reoffer=false. It will call offerLeadership for reoffer=true..
-    *
-    * @param error is true if the abdication is due to some error.
-    * @param reoffer is true if leadership should be offered again after abdication
+    * abdicateLeadership is called to resign from leadership.
     */
-  def abdicateLeadership(error: Boolean = false, reoffer: Boolean = false): Unit
+  def abdicateLeadership(): Unit
 
   /**
     * Subscribe to leadership change events.
     *
-    * The given actorRef will initally get the current state via the appropriate
+    * The given actorRef will initially get the current state via the appropriate
     * [[LocalLeadershipEvent]] message and will be informed of changes after that.
     */
   def subscribe(self: ActorRef): Unit
-  /** Unsubscribe to any leadership change events to this actor ref. */
+
+  /**
+    * Unsubscribe to any leadership change events to this actor ref.
+    */
   def unsubscribe(self: ActorRef): Unit
 }
 

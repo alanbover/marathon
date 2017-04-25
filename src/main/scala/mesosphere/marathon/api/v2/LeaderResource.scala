@@ -7,14 +7,16 @@ import javax.ws.rs._
 
 import com.google.inject.Inject
 import mesosphere.chaos.http.HttpConf
-import mesosphere.marathon.MarathonConf
 import mesosphere.marathon.api.{ AuthResource, MarathonMediaType, RestResource }
+import mesosphere.marathon.core.async.ExecutionContexts
 import mesosphere.marathon.core.election.ElectionService
 import mesosphere.marathon.plugin.auth._
 import mesosphere.marathon.storage.repository.RuntimeConfigurationRepository
 import mesosphere.marathon.raml.RuntimeConfiguration
 import Validation._
 import mesosphere.marathon.stream.UriIO
+
+import scala.concurrent.Future
 
 @Path("v2/leader")
 class LeaderResource @Inject() (
@@ -49,8 +51,15 @@ class LeaderResource @Inject() (
           val backup = validateOrThrow(Option(backupNullable))(optional(UriIO.valid))
           val restore = validateOrThrow(Option(restoreNullable))(optional(UriIO.valid))
           result(runtimeConfigRepo.store(RuntimeConfiguration(backup, restore)))
-          electionService.abdicateLeadership()
-          ok(jsonObjString("message" -> "Leadership abdicated"))
+
+          Future {
+            scala.concurrent.blocking {
+              Thread.sleep(5000)
+              electionService.abdicateLeadership()
+            }
+          }(ExecutionContexts.global)
+
+          ok(jsonObjString("message" -> "Leadership will be abdicated shortly"))
         }
       } else {
         notFound("There is no leader")

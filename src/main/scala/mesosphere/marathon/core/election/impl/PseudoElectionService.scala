@@ -3,25 +3,40 @@ package core.election.impl
 
 import akka.actor.ActorSystem
 import akka.event.EventStream
-import mesosphere.marathon.core.base.LifecycleState
-import org.slf4j.LoggerFactory
+import mesosphere.marathon.core.base._
+import mesosphere.marathon.core.election.ElectionService
+
+import scala.concurrent.Future
+import scala.util.control.NonFatal
 
 class PseudoElectionService(
-  system: ActorSystem,
-  eventStream: EventStream,
   hostPort: String,
-  backoff: ExponentialBackoff,
-  lifecycleState: LifecycleState) extends ElectionServiceBase(
-  system, eventStream, backoff, lifecycleState
-) {
-  private val log = LoggerFactory.getLogger(getClass.getName)
+  override protected val system: ActorSystem,
+  override protected val eventStream: EventStream,
+  override protected val lifecycleState: LifecycleState)
+    extends ElectionService with ElectionServiceFSM {
 
-  override def localHostPort: String = hostPort
+  import ElectionServiceFSM._
 
-  override def leaderHostPortImpl: Option[String] = if (isLeader) Some(hostPort) else None
+  override def leaderHostPort: Option[String] = leaderHostPortMetric.blocking {
+    if (isLeader) Some(hostPort) else None
+  }
 
-  override def offerLeadershipImpl(): Unit = synchronized {
-    log.info("Not using HA and therefore electing as leader by default")
-    startLeadership(_ => stopLeadership())
+  override protected def acquireLeadership(): Unit = synchronized {
+    state match {
+      case AcquiringLeadership(candidate) =>
+        Future {
+          try {
+            leadershipAcquired()
+          } catch {
+            case NonFatal(ex) =>
+              logger.error(
+                s"Fatal error while trying to start leadership of $candidate and auxiliary services. Exiting now", ex)
+              stop(exit = true)
+          }
+        }
+      case _ =>
+        logger.warn(s"Ignoring the request because of being in state: $state")
+    }
   }
 }

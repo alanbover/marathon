@@ -20,7 +20,6 @@ import mesosphere.marathon.core.task.tracker.InstanceTracker
 import mesosphere.marathon.state.{ PathId, RunSpec }
 import mesosphere.marathon.storage.repository.{ DeploymentRepository, GroupRepository }
 import mesosphere.marathon.stream.Implicits._
-import mesosphere.marathon.util._
 import mesosphere.mesos.Constraints
 import org.apache.mesos
 import org.apache.mesos.Protos.{ Status, TaskState }

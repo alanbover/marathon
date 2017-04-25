@@ -129,7 +129,7 @@ class ReelectionLeaderIntegrationTest extends LeaderIntegrationTest {
 
         Then("the request should be successful")
         result.code should be (200)
-        (result.entityJson \ "message").as[String] should be ("Leadership abdicated")
+        (result.entityJson \ "message").as[String] should be ("Leadership will be abdicated shortly")
 
         And("the leader must have died")
         WaitTestSupport.waitUntil("the former leading marathon process dies", 30.seconds) { !leadingProcess.isRunning() }
