@@ -1,7 +1,7 @@
 package mesosphere.marathon
 package core.election.impl
 
-import java.util.concurrent.Executors
+import java.util.concurrent.{ ExecutorService, Executors }
 
 import akka.actor.ActorSystem
 import com.typesafe.scalalogging.StrictLogging
@@ -36,7 +36,7 @@ private[impl] trait ElectionServiceFSM
   protected def lifecycleState: LifecycleState
   protected var state: State = Idle
 
-  protected val threadExecutor = Executors.newSingleThreadExecutor()
+  protected val threadExecutor: ExecutorService = Executors.newSingleThreadExecutor()
   /* We re-use the single thread executor here because code locks (via synchronized) frequently */
   protected implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(threadExecutor)
 
@@ -66,9 +66,7 @@ private[impl] trait ElectionServiceFSM
     } else {
       state match {
         case Idle =>
-          val newState = AcquiringLeadership(candidate)
-          logStateTransition(state, newState)
-          state = newState
+          updateState(AcquiringLeadership(candidate))
 
           Future {
             try {
@@ -89,9 +87,7 @@ private[impl] trait ElectionServiceFSM
   protected def leadershipAcquired(): Unit = synchronized {
     state match {
       case AcquiringLeadership(candidate) =>
-        val newState = Leading(candidate)
-        logStateTransition(state, newState)
-        state = newState
+        updateState(Leading(candidate))
 
         Future {
           try {
@@ -128,16 +124,15 @@ private[impl] trait ElectionServiceFSM
           case NonFatal(ex) =>
             logger.error("Fatal error while stopping", ex)
         } finally {
-          val newState = Stopped
-          logStateTransition(state, newState)
-          state = newState
+          updateState(Stopped)
         }
         if (exit) Runtime.getRuntime.asyncExit()
     }
   }
 
-  protected def logStateTransition(oldState: State, newState: State): Unit = synchronized {
-    logger.info(s"State transition: $oldState -> $newState")
+  protected def updateState(newState: State): Unit = synchronized {
+    logger.info(s"State transition: $state -> $newState")
+    state = newState
   }
 
   private def startLeadership(): Unit = synchronized {

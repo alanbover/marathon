@@ -55,17 +55,17 @@ class CuratorElectionService(
     state match {
       case AcquiringLeadership(candidate) =>
         try {
-          assert (leaderLatch == None)
+          assert(leaderLatch.isEmpty)
           val latch = new LeaderLatch(
             client, config.zooKeeperLeaderPath + "-curator", hostPort)
-          latch.addListener (LeaderChangeListener, threadExecutor)
-          latch.start ()
-          leaderLatch = Some (latch)
+          latch.addListener(LeaderChangeListener, threadExecutor)
+          latch.start()
+          leaderLatch = Some(latch)
         } catch {
           case NonFatal(ex) =>
             logger.error(
               s"Fatal error while trying to start leadership of $candidate and auxiliary services. Exiting now", ex)
-            stop (exit = true)
+            stop(exit = true)
         }
       case _ =>
         logger.warn(s"Ignoring the request because of being in state: $state")
