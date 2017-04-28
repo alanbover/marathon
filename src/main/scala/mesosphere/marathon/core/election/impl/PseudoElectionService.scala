@@ -4,7 +4,6 @@ package core.election.impl
 import akka.actor.ActorSystem
 import akka.event.EventStream
 import mesosphere.marathon.core.base._
-import mesosphere.marathon.core.election.ElectionService
 
 import scala.concurrent.Future
 import scala.util.control.NonFatal
@@ -14,15 +13,15 @@ class PseudoElectionService(
   override protected val system: ActorSystem,
   override protected val eventStream: EventStream,
   override protected val lifecycleState: LifecycleState)
-    extends ElectionService with ElectionServiceFSM {
+    extends ElectionServiceFSM {
 
   import ElectionServiceFSM._
 
-  override def leaderHostPort: Option[String] = leaderHostPortMetric.blocking {
+  override protected def leaderHostPortImpl(): Option[String] = lock {
     if (isLeader) Some(hostPort) else None
   }
 
-  override protected def acquireLeadership(): Unit = synchronized {
+  override protected def acquireLeadership(): Unit = lock {
     state match {
       case AcquiringLeadership(candidate) =>
         Future {

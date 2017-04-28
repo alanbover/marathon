@@ -8,7 +8,6 @@ import java.util.concurrent.TimeUnit
 import akka.actor.ActorSystem
 import akka.event.EventStream
 import mesosphere.marathon.core.base._
-import mesosphere.marathon.core.election.ElectionService
 import org.apache.curator.framework.api.ACLProvider
 import org.apache.curator.framework.imps.CuratorFrameworkState
 import org.apache.curator.framework.recipes.leader.{ LeaderLatch, LeaderLatchListener }
@@ -26,32 +25,30 @@ class CuratorElectionService(
   override protected val system: ActorSystem,
   override protected val eventStream: EventStream,
   override protected val lifecycleState: LifecycleState)
-    extends ElectionService with ElectionServiceFSM {
+    extends ElectionServiceFSM {
 
   import ElectionServiceFSM._
 
   private lazy val client = provideCuratorClient()
   private var leaderLatch: Option[LeaderLatch] = None
 
-  override def leaderHostPort: Option[String] = leaderHostPortMetric.blocking {
-    synchronized {
-      if (client.getState == CuratorFrameworkState.STOPPED) None
-      else {
-        try {
-          leaderLatch.flatMap { latch =>
-            val participant = latch.getLeader
-            if (participant.isLeader) Some(participant.getId) else None
-          }
-        } catch {
-          case NonFatal(ex) =>
-            logger.error("Error while getting current leader", ex)
-            None
+  override protected def leaderHostPortImpl(): Option[String] = lock {
+    if (client.getState == CuratorFrameworkState.STOPPED) None
+    else {
+      try {
+        leaderLatch.flatMap { latch =>
+          val participant = latch.getLeader
+          if (participant.isLeader) Some(participant.getId) else None
         }
+      } catch {
+        case NonFatal(ex) =>
+          logger.error("Error while getting current leader", ex)
+          None
       }
     }
   }
 
-  override def acquireLeadership(): Unit = synchronized {
+  override protected def acquireLeadership(): Unit = lock {
     state match {
       case AcquiringLeadership(candidate) =>
         try {
@@ -72,7 +69,7 @@ class CuratorElectionService(
     }
   }
 
-  override protected def preStopLeadership(): Unit = synchronized {
+  override protected def preStopLeadership(): Unit = lock {
     leaderLatch.foreach { latch =>
       try {
         if (client.getState != CuratorFrameworkState.STOPPED) latch.close()

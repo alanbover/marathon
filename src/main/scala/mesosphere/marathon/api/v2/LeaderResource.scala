@@ -8,18 +8,19 @@ import javax.ws.rs._
 import com.google.inject.Inject
 import mesosphere.chaos.http.HttpConf
 import mesosphere.marathon.api.{ AuthResource, MarathonMediaType, RestResource }
-import mesosphere.marathon.core.async.ExecutionContexts
 import mesosphere.marathon.core.election.ElectionService
 import mesosphere.marathon.plugin.auth._
 import mesosphere.marathon.storage.repository.RuntimeConfigurationRepository
 import mesosphere.marathon.raml.RuntimeConfiguration
 import Validation._
+import akka.actor.ActorSystem
 import mesosphere.marathon.stream.UriIO
 
-import scala.concurrent.Future
+import scala.concurrent.duration._
 
 @Path("v2/leader")
 class LeaderResource @Inject() (
+  system: ActorSystem,
   electionService: ElectionService,
   val config: MarathonConf with HttpConf,
   val runtimeConfigRepo: RuntimeConfigurationRepository,
@@ -52,12 +53,10 @@ class LeaderResource @Inject() (
           val restore = validateOrThrow(Option(restoreNullable))(optional(UriIO.valid))
           result(runtimeConfigRepo.store(RuntimeConfiguration(backup, restore)))
 
-          Future {
-            scala.concurrent.blocking {
-              Thread.sleep(5000)
-              electionService.abdicateLeadership()
-            }
-          }(ExecutionContexts.global)
+          import mesosphere.marathon.core.async.ExecutionContexts.global
+          system.scheduler.scheduleOnce(5.seconds) {
+            electionService.abdicateLeadership()
+          }
 
           ok(jsonObjString("message" -> "Leadership will be abdicated shortly"))
         }

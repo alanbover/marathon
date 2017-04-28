@@ -6,7 +6,8 @@ import java.util.concurrent.{ ExecutorService, Executors }
 import akka.actor.ActorSystem
 import com.typesafe.scalalogging.StrictLogging
 import mesosphere.marathon.core.base._
-import mesosphere.marathon.core.election.{ ElectionCandidate, LocalLeadershipEvent }
+import mesosphere.marathon.core.election.{ ElectionCandidate, ElectionService, LocalLeadershipEvent }
+import mesosphere.marathon.util.RichLock
 
 import scala.concurrent.{ ExecutionContext, Future }
 import scala.util.control.NonFatal
@@ -28,18 +29,20 @@ private[impl] object ElectionServiceFSM {
 }
 
 private[impl] trait ElectionServiceFSM
-    extends ElectionServiceMetrics with ElectionServiceEventStream with StrictLogging {
+    extends ElectionService with ElectionServiceMetrics with ElectionServiceEventStream with StrictLogging {
 
   import ElectionServiceFSM._
 
   protected def system: ActorSystem
   protected def lifecycleState: LifecycleState
-  protected var state: State = Idle
+  protected[impl] var state: State = Idle
+  protected def lock: RichLock = RichLock()
 
   protected val threadExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-  /* We re-use the single thread executor here because code locks (via synchronized) frequently */
+  /* We re-use the single thread executor here because code locks (via RichLock) frequently */
   protected implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(threadExecutor)
 
+  protected def leaderHostPortImpl(): Option[String]
   protected def acquireLeadership(): Unit
 
   protected def preStartLeadership(): Unit = ()
@@ -47,19 +50,31 @@ private[impl] trait ElectionServiceFSM
   protected def preStopLeadership(): Unit = ()
   protected def postStopLeadership(): Unit = ()
 
-  system.registerOnTermination(synchronized {
+  system.registerOnTermination(lock {
     logger.info("Stopping leadership on shutdown")
     stop(exit = false)
   })
 
-  def isLeader: Boolean = synchronized {
+  override def isLeader: Boolean = lock {
     state match {
       case Leading(_) => true
       case _ => false
     }
   }
 
-  def offerLeadership(candidate: ElectionCandidate): Unit = synchronized {
+  override def leaderHostPort: Option[String] = leaderHostPortMetric.blocking {
+    lock {
+      try {
+        leaderHostPortImpl()
+      } catch {
+        case NonFatal(ex) =>
+          logger.error("Could not get current leader", ex)
+          None
+      }
+    }
+  }
+
+  override def offerLeadership(candidate: ElectionCandidate): Unit = lock {
     logger.info(s"$candidate offered leadership (state = $state)")
     if (!lifecycleState.isRunning) {
       logger.info("Not accepting the offer since Marathon is shutting down")
@@ -84,7 +99,7 @@ private[impl] trait ElectionServiceFSM
     }
   }
 
-  protected def leadershipAcquired(): Unit = synchronized {
+  protected def leadershipAcquired(): Unit = lock {
     state match {
       case AcquiringLeadership(candidate) =>
         updateState(Leading(candidate))
@@ -105,12 +120,12 @@ private[impl] trait ElectionServiceFSM
     }
   }
 
-  def abdicateLeadership(): Unit = synchronized {
+  override def abdicateLeadership(): Unit = lock {
     logger.info(s"Abdicating leadership while being in state: $state")
     stop(exit = true)
   }
 
-  protected def stop(exit: Boolean): Unit = synchronized {
+  protected def stop(exit: Boolean): Unit = lock {
     logger.info("Stopping the election service")
 
     state match {
@@ -130,25 +145,25 @@ private[impl] trait ElectionServiceFSM
     }
   }
 
-  protected def updateState(newState: State): Unit = synchronized {
+  protected def updateState(newState: State): Unit = lock {
     logger.info(s"State transition: $state -> $newState")
     state = newState
   }
 
-  private def startLeadership(): Unit = synchronized {
+  private def startLeadership(): Unit = lock {
     state.getCandidate.foreach(startCandidateLeadership)
-    startMetrics()
     eventStream.publish(LocalLeadershipEvent.ElectedAsLeader)
+    startMetrics()
   }
 
-  private def stopLeadership(): Unit = synchronized {
-    eventStream.publish(LocalLeadershipEvent.Standby)
+  private def stopLeadership(): Unit = lock {
     stopMetrics()
     state.getCandidate.foreach(stopCandidateLeadership)
+    eventStream.publish(LocalLeadershipEvent.Standby)
   }
 
   private var candidateLeadershipStarted = false
-  private def startCandidateLeadership(candidate: ElectionCandidate): Unit = synchronized {
+  private def startCandidateLeadership(candidate: ElectionCandidate): Unit = lock {
     if (!candidateLeadershipStarted) {
       logger.info(s"Starting $candidate's leadership")
       candidate.startLeadership()
@@ -157,7 +172,7 @@ private[impl] trait ElectionServiceFSM
     }
   }
 
-  private def stopCandidateLeadership(candidate: ElectionCandidate): Unit = synchronized {
+  private def stopCandidateLeadership(candidate: ElectionCandidate): Unit = lock {
     if (candidateLeadershipStarted) {
       logger.info(s"Stopping $candidate's leadership")
       candidate.stopLeadership()
