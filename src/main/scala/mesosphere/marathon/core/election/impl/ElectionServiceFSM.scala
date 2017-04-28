@@ -3,13 +3,18 @@ package core.election.impl
 
 import java.util.concurrent.{ ExecutorService, Executors }
 
-import akka.actor.ActorSystem
+import akka.actor.{ ActorRef, ActorSystem }
+import akka.event.EventStream
 import com.typesafe.scalalogging.StrictLogging
+import kamon.Kamon
+import kamon.metric.instrument.Time
 import mesosphere.marathon.core.base._
 import mesosphere.marathon.core.election.{ ElectionCandidate, ElectionService, LocalLeadershipEvent }
+import mesosphere.marathon.metrics.{ Metrics, ServiceMetric, Timer }
 import mesosphere.marathon.util.RichLock
 
 import scala.concurrent.{ ExecutionContext, Future }
+import scala.concurrent.duration._
 import scala.util.control.NonFatal
 
 private[impl] object ElectionServiceFSM {
@@ -141,7 +146,11 @@ private[impl] trait ElectionServiceFSM
         } finally {
           updateState(Stopped)
         }
-        if (exit) Runtime.getRuntime.asyncExit()
+        if (exit) {
+          system.scheduler.scheduleOnce(500.milliseconds) {
+            Runtime.getRuntime.asyncExit()
+          }
+        }
     }
   }
 
@@ -178,6 +187,46 @@ private[impl] trait ElectionServiceFSM
       candidate.stopLeadership()
       logger.info(s"Stopped $candidate's leadership")
       candidateLeadershipStarted = false
+    }
+  }
+}
+
+private trait ElectionServiceEventStream {
+  protected def eventStream: EventStream
+  protected def lock: RichLock
+
+  def isLeader: Boolean
+
+  def subscribe(subscriber: ActorRef): Unit = lock {
+    eventStream.subscribe(subscriber, classOf[LocalLeadershipEvent])
+    val currentState = if (isLeader) LocalLeadershipEvent.ElectedAsLeader else LocalLeadershipEvent.Standby
+    subscriber ! currentState
+  }
+
+  def unsubscribe(subscriber: ActorRef): Unit = lock {
+    eventStream.unsubscribe(subscriber, classOf[LocalLeadershipEvent])
+  }
+}
+
+private trait ElectionServiceMetrics {
+  protected val leaderDurationMetric = "service.mesosphere.marathon.leaderDuration"
+  protected val leaderHostPortMetric: Timer = Metrics.timer(ServiceMetric, getClass, "current-leader-host-port")
+
+  protected def lock: RichLock
+  protected var metricsStarted = false
+
+  protected def startMetrics(): Unit = lock {
+    if (!metricsStarted) {
+      val startedAt = System.currentTimeMillis()
+      Kamon.metrics.gauge(leaderDurationMetric, Time.Milliseconds)(System.currentTimeMillis() - startedAt)
+      metricsStarted = true
+    }
+  }
+
+  protected def stopMetrics(): Unit = lock {
+    if (metricsStarted) {
+      Kamon.metrics.removeGauge(leaderDurationMetric)
+      metricsStarted = false
     }
   }
 }

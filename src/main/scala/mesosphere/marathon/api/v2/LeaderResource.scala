@@ -16,8 +16,6 @@ import Validation._
 import akka.actor.ActorSystem
 import mesosphere.marathon.stream.UriIO
 
-import scala.concurrent.duration._
-
 @Path("v2/leader")
 class LeaderResource @Inject() (
   system: ActorSystem,
@@ -53,11 +51,7 @@ class LeaderResource @Inject() (
           val restore = validateOrThrow(Option(restoreNullable))(optional(UriIO.valid))
           result(runtimeConfigRepo.store(RuntimeConfiguration(backup, restore)))
 
-          import mesosphere.marathon.core.async.ExecutionContexts.global
-          system.scheduler.scheduleOnce(5.seconds) {
-            electionService.abdicateLeadership()
-          }
-
+          electionService.abdicateLeadership()
           ok(jsonObjString("message" -> "Leadership will be abdicated shortly"))
         }
       } else {
