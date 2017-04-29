@@ -18,6 +18,7 @@ import scala.concurrent.duration._
 import scala.util.control.NonFatal
 
 private[impl] object ElectionServiceFSM {
+  /* The State and its descendants are defined in the companion object because access to them in tests is required. */
   sealed trait State {
     def getCandidate: Option[ElectionCandidate] = this match {
       case Idle => None
@@ -33,6 +34,16 @@ private[impl] object ElectionServiceFSM {
   case object Stopped extends State
 }
 
+/**
+  * This trait represents a simple state machine to get elected as a leader at most once. If leadership is lost,
+  * Marathon gets shut down.
+  *
+  * If `abdicateLeadership` is called while being a leader, obviously, the leadership gets abdicated. In any case,
+  * Marathon shutdown gets scheduled to take place shortly.
+  *
+  * Users of this trait are supposed to implement `leaderHostPortImpl` and `acquireLeadership` methods. Their bodies
+  * are expected to be enclosed with `lock` defined in this trait.
+  */
 private[impl] trait ElectionServiceFSM
     extends ElectionService with ElectionServiceMetrics with ElectionServiceEventStream with StrictLogging {
 
@@ -41,15 +52,23 @@ private[impl] trait ElectionServiceFSM
   protected def system: ActorSystem
   protected def lifecycleState: LifecycleState
   protected[impl] var state: State = Idle
+
+  /**
+    * All methods of this trait and must use this re-entrant lock in order ease reasoning about the code.
+    * Performance impact doesn't matter here at all, because state transitions are not meant to happen often.
+    */
   protected def lock: RichLock = RichLock()
 
   protected val threadExecutor: ExecutorService = Executors.newSingleThreadExecutor()
   /* We re-use the single thread executor here because code locks (via RichLock) frequently */
   protected implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(threadExecutor)
 
+  /* This method is wrapped into `leaderHostPort` which handles non-fatal exceptions. */
   protected def leaderHostPortImpl(): Option[String]
   protected def acquireLeadership(): Unit
 
+  /* If something needs to be done before/after a candidate's leadership is started/stopped, some or all of these
+   * hooks should be overridden. */
   protected def preStartLeadership(): Unit = ()
   protected def postStartLeadership(): Unit = ()
   protected def preStopLeadership(): Unit = ()
@@ -73,7 +92,7 @@ private[impl] trait ElectionServiceFSM
         leaderHostPortImpl()
       } catch {
         case NonFatal(ex) =>
-          logger.error("Could not get current leader", ex)
+          logger.error("Could not get the current leader", ex)
           None
       }
     }
@@ -104,6 +123,11 @@ private[impl] trait ElectionServiceFSM
     }
   }
 
+  /**
+    * This method is called when leadership is granted to a candidate. It starts the candidate's leadership,
+    * creates some metrics, lets the world know about it. Prefer to implement the pre/post hooks to overriding
+    * this method if something else needs to be done upon having elected as a leader.
+    */
   protected def leadershipAcquired(): Unit = lock {
     state match {
       case AcquiringLeadership(candidate) =>
@@ -130,6 +154,10 @@ private[impl] trait ElectionServiceFSM
     stop(exit = true)
   }
 
+  /**
+    * This method stops a candidate's leadership if it has been started prior to that. After that it makes
+    * Marathon's shutdown happen shortly.
+    */
   protected def stop(exit: Boolean): Unit = lock {
     logger.info("Stopping the election service")
 
@@ -145,10 +173,10 @@ private[impl] trait ElectionServiceFSM
             logger.error("Fatal error while stopping", ex)
         } finally {
           updateState(Stopped)
-        }
-        if (exit) {
-          system.scheduler.scheduleOnce(500.milliseconds) {
-            Runtime.getRuntime.asyncExit()
+          if (exit) {
+            system.scheduler.scheduleOnce(500.milliseconds) {
+              Runtime.getRuntime.asyncExit()
+            }
           }
         }
     }
@@ -161,14 +189,12 @@ private[impl] trait ElectionServiceFSM
 
   private def startLeadership(): Unit = lock {
     state.getCandidate.foreach(startCandidateLeadership)
-    eventStream.publish(LocalLeadershipEvent.ElectedAsLeader)
     startMetrics()
   }
 
   private def stopLeadership(): Unit = lock {
     stopMetrics()
     state.getCandidate.foreach(stopCandidateLeadership)
-    eventStream.publish(LocalLeadershipEvent.Standby)
   }
 
   private var candidateLeadershipStarted = false
@@ -176,8 +202,9 @@ private[impl] trait ElectionServiceFSM
     if (!candidateLeadershipStarted) {
       logger.info(s"Starting $candidate's leadership")
       candidate.startLeadership()
-      logger.info(s"Started $candidate's leadership")
       candidateLeadershipStarted = true
+      logger.info(s"Started $candidate's leadership")
+      eventStream.publish(LocalLeadershipEvent.ElectedAsLeader)
     }
   }
 
@@ -185,8 +212,9 @@ private[impl] trait ElectionServiceFSM
     if (candidateLeadershipStarted) {
       logger.info(s"Stopping $candidate's leadership")
       candidate.stopLeadership()
-      logger.info(s"Stopped $candidate's leadership")
       candidateLeadershipStarted = false
+      logger.info(s"Stopped $candidate's leadership")
+      eventStream.publish(LocalLeadershipEvent.Standby)
     }
   }
 }
