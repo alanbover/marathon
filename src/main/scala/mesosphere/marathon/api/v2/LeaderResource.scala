@@ -52,7 +52,7 @@ class LeaderResource @Inject() (
           result(runtimeConfigRepo.store(RuntimeConfiguration(backup, restore)))
 
           electionService.abdicateLeadership()
-          ok(jsonObjString("message" -> "Leadership will be abdicated shortly"))
+          ok(jsonObjString("message" -> "Leadership abdicated"))
         }
       } else {
         notFound("There is no leader")
