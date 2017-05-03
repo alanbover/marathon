@@ -65,6 +65,9 @@ private[impl] trait ElectionServiceFSM
 
   /* This method is wrapped into `leaderHostPort` which handles non-fatal exceptions. */
   protected def leaderHostPortImpl(): Option[String]
+
+  /* If an error occurs while doing something asynchronously, it must call `stop(exit = true)` in such a case,
+   * in order to shutdown Marathon. */
   protected def acquireLeadership(): Unit
 
   /* If something needs to be done before/after a candidate's leadership is started/stopped, some or all of these
