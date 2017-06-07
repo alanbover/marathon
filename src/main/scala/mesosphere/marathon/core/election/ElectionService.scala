@@ -49,7 +49,7 @@ trait ElectionService {
   def subscribe(self: ActorRef): Unit
 
   /**
-    * Unsubscribe to any leadership change events to this actor ref.
+    * Unsubscribe to any leadership change events for the given [[ActorRef]].
     */
   def unsubscribe(self: ActorRef): Unit
 }

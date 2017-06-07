@@ -5,7 +5,7 @@ package core.election.impl
 import akka.event.EventStream
 import mesosphere.AkkaUnitTest
 import mesosphere.chaos.http.HttpConf
-import mesosphere.marathon.core.base.{ LifecycleState, RichRuntime }
+import mesosphere.marathon.core.base.RichRuntime
 import mesosphere.marathon.core.election.{ ElectionCandidate, ElectionService, LocalLeadershipEvent }
 import org.mockito.Mockito
 import org.mockito.invocation.InvocationOnMock
@@ -16,8 +16,6 @@ import org.scalatest.time.{ Seconds, Span }
 class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
   override implicit lazy val patienceConfig: PatienceConfig = PatienceConfig(timeout = Span(10, Seconds))
 
-  import ElectionServiceFSM._
-
   class Fixture {
     val hostPort: String = "unresolvable:2181"
     val httpConfig: HttpConf = mock[HttpConf]
@@ -27,39 +25,37 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
   }
 
   "PseudoElectionService" should {
-    "state is Idle initially" in {
+    "leader is not set initially" in {
       val f = new Fixture
-      val electionService = new PseudoElectionService(
-        f.hostPort, system, f.events, LifecycleState.Ignore)
+      val electionService = new PseudoElectionService(f.hostPort, system, f.events)
 
-      electionService.state should be(Idle)
+      electionService.leader should be(None)
     }
 
-    "state is eventually Offered after offerLeadership" in {
+    "leader is eventually set after offerLeadership is called" in {
       val f = new Fixture
-      val electionService = new PseudoElectionService(
-        f.hostPort, system, f.events, LifecycleState.Ignore)
+      val electionService = new PseudoElectionService(f.hostPort, system, f.events)
 
       Given("leadership is offered")
       electionService.offerLeadership(f.candidate)
-      Then("state becomes Leading")
-      eventually { electionService.state should equal(Leading(f.candidate)) }
+      Then("leader is set")
+      eventually { electionService.leader should equal(Some(f.candidate)) }
 
       Given("leadership is offered again")
       electionService.offerLeadership(f.candidate)
-      Then("state is still Leading")
-      eventually { electionService.state should equal(Leading(f.candidate)) }
+      Then("leader is set to None and Marathon stops")
+      eventually { electionService.leader should equal(None) }
+      exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
     }
 
     "Marathon stops after abdicateLeadership while being Idle" in {
       val f = new Fixture
-      val electionService = new PseudoElectionService(
-        f.hostPort, system, f.events, LifecycleState.Ignore)
+      val electionService = new PseudoElectionService(f.hostPort, system, f.events)
 
       Given("leadership is abdicated while not being leader")
       electionService.abdicateLeadership()
-      Then("state becomes Stopped")
-      eventually { electionService.state should be(Stopped) }
+      Then("leader is None and Marathon stops")
+      eventually { electionService.leader should be(None) }
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
     }
 
@@ -67,12 +63,11 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
       val f = new Fixture
       val events = mock[EventStream]
 
-      val electionService = new PseudoElectionService(
-        f.hostPort, system, events, LifecycleState.Ignore)
+      val electionService = new PseudoElectionService(f.hostPort, system, events)
 
-      Given("this instance is becoming leader")
+      Given("this instance is becoming a leader")
       electionService.offerLeadership(f.candidate)
-      eventually { electionService.state.isInstanceOf[Leading] }
+      eventually { electionService.leader should equal(Some(f.candidate)) }
 
       Then("the candidate is called, then an event is published")
       val order = Mockito.inOrder(events, f.candidate)
@@ -81,7 +76,7 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
 
       Given("this instance is abdicating")
       electionService.abdicateLeadership()
-      eventually { electionService.state should be(Stopped) }
+      eventually { electionService.leader should be(None) }
 
       Then("the candidate is called, then an event is published")
       eventually { order.verify(f.candidate).stopLeadership() }
@@ -93,24 +88,22 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
 
     "Marathon stops after leadership abdication while beinbg a leader" in {
       val f = new Fixture
-      val electionService = new PseudoElectionService(
-        f.hostPort, system, f.events, LifecycleState.Ignore)
+      val electionService = new PseudoElectionService(f.hostPort, system, f.events)
 
       Given("this instance becomes leader and then abdicates leadership")
       electionService.offerLeadership(f.candidate)
-      eventually { electionService.state.isInstanceOf[Leading] }
+      eventually { electionService.leader should equal(Some(f.candidate)) }
       electionService.abdicateLeadership()
 
       Then("then state is Stopped and Marathon stops")
-      eventually { electionService.state should be (Stopped) }
+      eventually { electionService.leader should be(None) }
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
     }
 
     "Marathon stops if a candidate's startLeadership fails" in {
       val f = new Fixture
 
-      val electionService = new PseudoElectionService(
-        f.hostPort, system, f.events, LifecycleState.Ignore)
+      val electionService = new PseudoElectionService(f.hostPort, system, f.events)
 
       Mockito.when(f.candidate.startLeadership()).thenAnswer(new Answer[Unit] {
         override def answer(invocation: InvocationOnMock): Unit = {
@@ -122,26 +115,8 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
       electionService.offerLeadership(f.candidate)
 
       Then("the instance is stopped")
-      eventually { electionService.state should be (Stopped) }
+      eventually { electionService.leader should be(None) }
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
-    }
-
-    "leaderHostPort handles exceptions and returns None" in {
-      Given("an ElectionServiceBase descendant throws an exception in leaderHostPortImpl")
-      val f = new Fixture
-      val electionService = new PseudoElectionService(
-        f.hostPort, system, f.events, LifecycleState.Ignore
-      ) {
-        override def leaderHostPortImpl: Option[String] = {
-          throw new Exception("leaderHostPortImpl exception")
-        }
-      }
-
-      When("querying for leaderHostPort")
-      val currentLeaderHostPort = electionService.leaderHostPort
-
-      Then("it should return none")
-      currentLeaderHostPort should be(None)
     }
   }
 }
