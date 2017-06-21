@@ -7,8 +7,8 @@ import mesosphere.marathon.core.election.LocalLeadershipEvent
 import mesosphere.marathon.util.RichLock
 
 private[impl] trait ElectionServiceEventStream {
-  protected def eventStream: EventStream
-  protected def lock: RichLock
+  protected val eventStream: EventStream
+  protected val lock: RichLock
 
   def isLeader: Boolean
 

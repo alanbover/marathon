@@ -10,7 +10,7 @@ private[impl] trait ElectionServiceMetrics {
   protected val leaderDurationMetric = "service.mesosphere.marathon.leaderDuration"
   protected val leaderHostPortMetric: Timer = Metrics.timer(ServiceMetric, getClass, "current-leader-host-port")
 
-  protected def lock: RichLock
+  protected val lock: RichLock
   protected var metricsStarted = false
 
   protected def startMetrics(): Unit = lock {

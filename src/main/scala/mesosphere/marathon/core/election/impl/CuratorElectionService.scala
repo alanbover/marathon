@@ -36,7 +36,7 @@ class CuratorElectionService(
   config: MarathonConf,
   hostPort: String,
   system: ActorSystem,
-  val eventStream: EventStream,
+  override val eventStream: EventStream,
   lifecycleState: LifecycleState)
     extends ElectionService with ElectionServiceMetrics with ElectionServiceEventStream with StrictLogging {
 
@@ -49,7 +49,7 @@ class CuratorElectionService(
     * This lock is used to linearize methods with side effects.
     * Performance impact doesn't matter here at all, methods of this class are called infrequently.
     */
-  protected override def lock: RichLock = RichLock()
+  protected override val lock: RichLock = RichLock()
 
   private val threadExecutor: ExecutorService = Executors.newSingleThreadExecutor()
   /** We re-use the single thread executor here because some methods of this class might get blocked for a long time. */
