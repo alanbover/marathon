@@ -30,7 +30,8 @@ class ElectionModule(
     new PseudoElectionService(
       hostPort,
       system,
-      eventStream
+      eventStream,
+      lifecycleState
     )
   }
 }
