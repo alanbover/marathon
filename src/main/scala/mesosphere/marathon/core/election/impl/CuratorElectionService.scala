@@ -124,7 +124,6 @@ class CuratorElectionService(
           isCurrentlyLeading.set(true)
         } catch {
           case NonFatal(ex) =>
-            isCurrentlyLeading.set(false)
             logger.error(s"Fatal error while starting leadership of $currentCandidate. Exiting now", ex)
             stop(exit = true)
         }
@@ -136,21 +135,22 @@ class CuratorElectionService(
 
   override def abdicateLeadership(): Unit = {
     logger.info("Abdicating leadership")
-    stop(exit = true)
+    stop(exit = true, exitTimeout = 500.milliseconds)
   }
 
-  private def stop(exit: Boolean): Unit = {
+  private def stop(exit: Boolean, exitTimeout: FiniteDuration = 0.milliseconds): Unit = {
     logger.info("Stopping the election service")
+    isCurrentlyLeading.set(false)
     try {
       stopLeadership()
     } catch {
       case NonFatal(ex) =>
         logger.error("Fatal error while stopping", ex)
     } finally {
-      isCurrentlyLeading.set(false)
       currentCandidate.set(None)
       if (exit) {
-        system.scheduler.scheduleOnce(500.milliseconds) {
+        logger.info("Terminating due to leadership abdication")
+        system.scheduler.scheduleOnce(exitTimeout) {
           Runtime.getRuntime.asyncExit()
         }
       }
@@ -158,31 +158,33 @@ class CuratorElectionService(
   }
 
   private def startLeadership(): Unit = {
-    currentCandidate.get.foreach { candidate =>
-      startCandidateLeadership(candidate)
-      logger.info(s"$candidate has started")
-    }
+    currentCandidate.get.foreach(startCandidateLeadership)
     startMetrics()
   }
 
   private def stopLeadership(): Unit = {
-    stopMetrics()
-    currentCandidate.get.foreach { candidate =>
-      stopCandidateLeadership(candidate)
-      logger.info(s"$candidate has stopped")
-    }
     leaderLatch.get.foreach { latch =>
       try {
         if (latch.getState == LeaderLatch.State.STARTED)
           latch.close()
-        if (client.getState == CuratorFrameworkState.STARTED)
-          client.close()
       } catch {
         case NonFatal(ex) =>
-          logger.error("Could not close leader latch", ex)
+          logger.error("Could not close the leader latch", ex)
       }
     }
     leaderLatch.set(None)
+
+    if (client.getState == CuratorFrameworkState.STARTED) {
+      try {
+        client.close()
+      } catch {
+        case NonFatal(ex) =>
+          logger.error("Could not close the curator client", ex)
+      }
+    }
+
+    stopMetrics()
+    currentCandidate.get.foreach(stopCandidateLeadership)
   }
 
   private[this] val candidateLeadershipStarted = new AtomicBoolean(false)

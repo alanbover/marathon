@@ -49,7 +49,7 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
     }
 
-    "Marathon stops after abdicateLeadership while being Idle" in {
+    "Marathon stops after abdicateLeadership while being idle" in {
       val f = new Fixture
       val electionService = new PseudoElectionService(f.hostPort, system, f.events, f.lifecycle)
 
@@ -87,7 +87,7 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
     }
 
-    "Marathon stops after leadership abdication while beinbg a leader" in {
+    "Marathon stops after leadership abdication while being a leader" in {
       val f = new Fixture
       val electionService = new PseudoElectionService(f.hostPort, system, f.events, f.lifecycle)
 

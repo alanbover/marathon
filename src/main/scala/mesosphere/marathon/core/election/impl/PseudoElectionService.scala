@@ -61,7 +61,6 @@ class PseudoElectionService(
             isCurrentlyLeading.set(true)
           } catch {
             case NonFatal(ex) =>
-              isCurrentlyLeading.set(false)
               logger.error(s"Fatal error while acquiring leadership for $candidate. Exiting now", ex)
               stop(exit = true)
           }
@@ -77,21 +76,22 @@ class PseudoElectionService(
 
   override def abdicateLeadership(): Unit = {
     logger.info("Abdicating leadership")
-    stop(exit = true)
+    stop(exit = true, exitTimeout = 500.milliseconds)
   }
 
-  private def stop(exit: Boolean): Unit = {
+  private def stop(exit: Boolean, exitTimeout: FiniteDuration = 0.milliseconds): Unit = {
     logger.info("Stopping the election service")
+    isCurrentlyLeading.set(false)
     try {
       stopLeadership()
     } catch {
       case NonFatal(ex) =>
         logger.error("Fatal error while stopping", ex)
     } finally {
-      isCurrentlyLeading.set(false)
       currentCandidate.set(None)
       if (exit) {
-        system.scheduler.scheduleOnce(500.milliseconds) {
+        logger.info("Terminating due to leadership abdication")
+        system.scheduler.scheduleOnce(exitTimeout) {
           Runtime.getRuntime.asyncExit()
         }
       }
@@ -99,19 +99,13 @@ class PseudoElectionService(
   }
 
   private def startLeadership(): Unit = {
-    currentCandidate.get.foreach { candidate =>
-      startCandidateLeadership(candidate)
-      logger.info(s"$candidate has started")
-    }
+    currentCandidate.get.foreach(startCandidateLeadership)
     startMetrics()
   }
 
   private def stopLeadership(): Unit = {
     stopMetrics()
-    currentCandidate.get.foreach { candidate =>
-      stopCandidateLeadership(candidate)
-      logger.info(s"$candidate has stopped")
-    }
+    currentCandidate.get.foreach(stopCandidateLeadership)
   }
 
   private[this] val candidateLeadershipStarted = new AtomicBoolean(false)
