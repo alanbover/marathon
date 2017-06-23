@@ -54,7 +54,7 @@ class CuratorElectionService(
   private[this] val acquiringLeadership = new AtomicBoolean(false)
   private[this] val isCurrentlyLeading = new AtomicBoolean(false)
 
-  private[this] lazy val client = provideCuratorClient()
+  private[this] lazy val client = createCuratorClient()
   private[this] val leaderLatch = new AtomicReference(Option.empty[LeaderLatch])
 
   override def isLeader: Boolean = isCurrentlyLeading.get
@@ -104,6 +104,7 @@ class CuratorElectionService(
     if (acquiringLeadership.compareAndSet(false, true)) {
       require(leaderLatch.get.isEmpty, "leaderLatch is not empty")
 
+      startCuratorClient()
       val latch = new LeaderLatch(
         client, config.zooKeeperLeaderPath + "-curator", hostPort)
       latch.addListener(LeaderChangeListener, threadExecutor)
@@ -174,6 +175,8 @@ class CuratorElectionService(
       try {
         if (latch.getState == LeaderLatch.State.STARTED)
           latch.close()
+        if (client.getState == CuratorFrameworkState.STARTED)
+          client.close()
       } catch {
         case NonFatal(ex) =>
           logger.error("Could not close leader latch", ex)
@@ -201,7 +204,7 @@ class CuratorElectionService(
     }
   }
 
-  private def provideCuratorClient(): CuratorFramework = {
+  private def createCuratorClient(): CuratorFramework = {
     logger.info(s"Will do leader election through ${config.zkHosts}")
 
     // let the world read the leadership information as some setups depend on that to find Marathon
@@ -232,9 +235,12 @@ class CuratorElectionService(
         builder.build()
     }
 
+    client
+  }
+
+  private def startCuratorClient(): Unit = {
     client.start()
     client.blockUntilConnected(config.zkTimeoutDuration.toMillis.toInt, TimeUnit.MILLISECONDS)
-    client
   }
 
   /**
