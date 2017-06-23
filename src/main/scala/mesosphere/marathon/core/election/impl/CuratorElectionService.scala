@@ -172,7 +172,8 @@ class CuratorElectionService(
     }
     leaderLatch.get.foreach { latch =>
       try {
-        if (client.getState != CuratorFrameworkState.STOPPED) latch.close()
+        if (latch.getState == LeaderLatch.State.STARTED)
+          latch.close()
       } catch {
         case NonFatal(ex) =>
           logger.error("Could not close leader latch", ex)
@@ -181,18 +182,23 @@ class CuratorElectionService(
     leaderLatch.set(None)
   }
 
+  private[this] val candidateLeadershipStarted = new AtomicBoolean(false)
   private def startCandidateLeadership(candidate: ElectionCandidate): Unit = {
-    logger.info(s"Starting $candidate's leadership")
-    candidate.startLeadership()
-    logger.info(s"Started $candidate's leadership")
-    eventStream.publish(LocalLeadershipEvent.ElectedAsLeader)
+    if (candidateLeadershipStarted.compareAndSet(false, true)) {
+      logger.info(s"Starting $candidate's leadership")
+      candidate.startLeadership()
+      logger.info(s"Started $candidate's leadership")
+      eventStream.publish(LocalLeadershipEvent.ElectedAsLeader)
+    }
   }
 
   private def stopCandidateLeadership(candidate: ElectionCandidate): Unit = {
-    logger.info(s"Stopping $candidate's leadership")
-    candidate.stopLeadership()
-    logger.info(s"Stopped $candidate's leadership")
-    eventStream.publish(LocalLeadershipEvent.Standby)
+    if (candidateLeadershipStarted.compareAndSet(true, false)) {
+      logger.info(s"Stopping $candidate's leadership")
+      candidate.stopLeadership()
+      logger.info(s"Stopped $candidate's leadership")
+      eventStream.publish(LocalLeadershipEvent.Standby)
+    }
   }
 
   private def provideCuratorClient(): CuratorFramework = {
