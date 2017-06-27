@@ -5,6 +5,20 @@ import akka.actor.ActorRef
 
 /**
   * ElectionService is implemented by leadership election mechanisms.
+  *
+  * This trait is used in conjunction with [[ElectionCandidate]]. From their point of view,
+  * a leader election works as follow:
+  *
+  * -> ElectionService.offerLeadership(candidate)     |      - A leader election is triggered.
+  *                                                          — Once `candidate` is elected as a leader,
+  *                                                            its `startLeadership` is called.
+  *
+  * Please note that upon a call to [[ElectionService.abdicateLeadership]], or
+  * any error in any of method of [[ElectionService]], or a leadership loss,
+  * [[ElectionCandidate.stopLeadership]] is called if [[ElectionCandidate.startLeadership]]
+  * has been called before, and JVM gets shutdown.
+  *
+  * It effectively means that a particular instance of Marathon can be elected at most once during its lifetime.
   */
 trait ElectionService {
   /**
