@@ -43,14 +43,16 @@ trait ElectionService {
   def leaderHostPort: Option[String]
 
   /**
-    * offerLeadership is called to candidate for leadership. offerLeadership is idem-potent.
+    * offerLeadership is called to candidate for leadership. It must be called by candidate only once.
     *
     * @param candidate is called back once elected or defeated
     */
   def offerLeadership(candidate: ElectionCandidate): Unit
 
   /**
-    * abdicateLeadership is called to resign from leadership.
+    * abdicateLeadership is called to resign from leadership. By the time this method returns,
+    * it can be safely assumed the leadership has been abdicated. This method can be called even
+    * if [[offerLeadership]] wasn't called prior to that, and it will result in Marathon stop and JVM shutdown.
     */
   def abdicateLeadership(): Unit
 
@@ -59,6 +61,9 @@ trait ElectionService {
     *
     * The given actorRef will initially get the current state via the appropriate
     * [[LocalLeadershipEvent]] message and will be informed of changes after that.
+    *
+    * Upon becoming a leader, [[LocalLeadershipEvent.ElectedAsLeader]] is published. Upon leadership loss,
+    * [[LocalLeadershipEvent.Standby]] is sent.
     */
   def subscribe(self: ActorRef): Unit
 
