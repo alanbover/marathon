@@ -3,7 +3,7 @@ package api
 
 import javax.servlet.http.HttpServletRequest
 import javax.ws.rs._
-import javax.ws.rs.core.{ Context, MediaType, Response }
+import javax.ws.rs.core.{ Context, MediaType, Request, Response, Variant }
 
 import akka.actor.ActorSystem
 import ch.qos.logback.classic.{ Level, Logger, LoggerContext }
@@ -35,10 +35,32 @@ class SystemResource @Inject() (val config: MarathonConf, cfg: Config)(implicit
     val authorizer: Authorizer,
     actorSystem: ActorSystem) extends RestResource with AuthResource with StrictLogging {
 
+  /**
+    * ping sends a pong to a client.
+    *
+    * ping doesn't use the `Produces` or `Consumes` tags because those do specific checking for a client
+    * Accept header that may or may not exist. In the interest of compatibility we dynamically generate
+    * a "pong" content object depending on the client's preferred Content-Type, or else assume `text/plain`
+    * if the client either doesn't specify an Accept header, or else specifies one that we don't support.
+    */
   @GET
   @Path("ping")
-  @Produces(Array(MediaType.WILDCARD))
-  def ping(): Response = ok("pong")
+  def ping(@Context req: Request): Response = {
+    import MediaType._
+
+    val v = Variant.mediaTypes(
+      TEXT_PLAIN_TYPE,
+      APPLICATION_JSON_TYPE
+    ).add.build
+
+    Option[Variant](req.selectVariant(v)).filter(_.getMediaType.isCompatible(APPLICATION_JSON_TYPE)).map { rv =>
+      // return a properly formatted JSON object
+      Response.ok("\"pong\"").`type`(rv.getMediaType.toString).build
+    }.getOrElse {
+      // otherwise we send back plain text
+      Response.ok("pong").`type`(TEXT_PLAIN).build
+    }
+  }
 
   @GET
   @Path("metrics")

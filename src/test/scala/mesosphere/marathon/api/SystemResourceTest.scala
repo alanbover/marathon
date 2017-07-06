@@ -3,9 +3,12 @@ package api
 
 import akka.actor.ActorSystem
 import ch.qos.logback.classic.{ Level, Logger }
+import javax.ws.rs.core.{ MediaType, Request, Variant }
 import mesosphere.AkkaUnitTest
 import org.slf4j.LoggerFactory
-import play.api.libs.json.{ JsDefined, JsObject, Json }
+import org.mockito.Matchers
+import org.mockito.Mockito.when
+import play.api.libs.json.{ JsDefined, JsObject, JsString, Json }
 
 class SystemResourceTest extends AkkaUnitTest {
   class Fixture {
@@ -17,18 +20,32 @@ class SystemResourceTest extends AkkaUnitTest {
 
   "SystemResource" should {
     "Do a ping" in new Fixture {
-      When("A ping is requested")
-      val response = resource.ping()
+      val request = mock[Request]
 
-      Then("A pong is send back")
+      When("A ping is requested")
+      val response = resource.ping(request)
+
+      Then("A pong is sent back")
       response.getEntity should be("pong")
+    }
+
+    "Do a ping with preferred JSON content type" in new Fixture {
+      val request = mock[Request]
+      when(request.selectVariant(Matchers.any())).thenReturn(Variant.mediaTypes(MediaType.APPLICATION_JSON_TYPE).add.build.get(0))
+
+      When("A ping is requested")
+      val response = resource.ping(request)
+
+      Then("A pong is sent back")
+      val pong = Json.parse(response.getEntity.asInstanceOf[String]).as[JsString]
+      pong.value should be("pong")
     }
 
     "Get metrics" in new Fixture {
       When("The metrics are requested")
       val response = resource.metrics(auth.request)
 
-      Then("The metrics are send")
+      Then("The metrics are sent")
       val metricsJson = Json.parse(response.getEntity.asInstanceOf[String])
       metricsJson \ "start" shouldBe a[JsDefined]
       metricsJson \ "end" shouldBe a[JsDefined]
