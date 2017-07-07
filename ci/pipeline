@@ -11,6 +11,7 @@ import $file.awsClient
 import $file.fileUtil
 import $file.phabricatorClient
 import $file.provision
+import $file.upgrade
 import $file.utils
 
 val PACKAGE_DIR: Path = pwd / 'target / 'universal
@@ -100,6 +101,17 @@ def phabricator(): Unit = {
 }
 
 /**
+ * Update DC/OS repository and triggers build of update DC/OS image.
+ */
+def updateDcosImage(): Unit = {
+//  val artifactUrl = ???
+//  val sha1 = ???
+//  val verison = "1.5.0 ??"
+//
+//  upgrade.updateMarathon(artifactUrl, sha1, s"Bump Marathon to $version")
+}
+
+/**
  * The main pipeline target for builds on Jekins.
  */
 @main
@@ -116,4 +128,6 @@ def jenkins(): Unit = {
   }
 
   createAndUploadPackages()
+
+  // if(isMasterBuild) updateDcosImage()
 }
