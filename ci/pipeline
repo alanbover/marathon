@@ -33,8 +33,7 @@ def compileAndTest(): Unit = utils.stage("Compile and Test") {
 
 @main
 def zipSandboxLogs(): Unit = {
-  try { %("tar", "-zcvf", "sandboxes.tar.gz", "sandboxes") }
-  catch { case e => println(s">>> Failed to archive logs because: $e") }
+  Try(%("tar", "-zcvf", "sandboxes.tar.gz", "sandboxes"))
 }
 
 @main
