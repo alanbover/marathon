@@ -44,7 +44,8 @@ trait ExitDisabledTest extends Suite with BeforeAndAfterAll {
         throw new Exception("Did not find desired exit code.")
       }
     }.recover {
-      case NonFatal(_) => false
+      case NonFatal(ex) =>
+        throw ex
     }
   }
 }
