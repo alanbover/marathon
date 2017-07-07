@@ -44,6 +44,7 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
 
       Given("leadership is offered again")
       electionService.offerLeadership(f.candidate)
+
       Then("leader is set to None and Marathon stops")
       eventually { electionService.currentCandidate.get should equal(None) }
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
@@ -55,6 +56,7 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
 
       Given("leadership is abdicated while not being leader")
       electionService.abdicateLeadership()
+
       Then("leader is None and Marathon stops")
       eventually { electionService.currentCandidate.get should be(None) }
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
@@ -77,11 +79,13 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually {
 
       Given("this instance is abdicating")
       electionService.abdicateLeadership()
-      eventually { electionService.currentCandidate.get should be(None) }
 
       Then("the candidate is called, then an event is published")
       eventually { order.verify(f.candidate).stopLeadership() }
       eventually { order.verify(events).publish(LocalLeadershipEvent.Standby) }
+
+      Then("the candidate is set to None")
+      eventually { electionService.currentCandidate.get should be(None) }
 
       Then("then Marathon stops")
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
