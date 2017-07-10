@@ -149,7 +149,7 @@ class CuratorElectionService(
     } finally {
       currentCandidate.set(None)
       if (exit) {
-        logger.info("Terminating due to leadership abdication")
+        logger.info("Terminating due to leadership abdication or failure")
         system.scheduler.scheduleOnce(exitTimeout) {
           Runtime.getRuntime.asyncExit()
         }

@@ -38,18 +38,13 @@ trait ExitDisabledTest extends Suite with BeforeAndAfterAll {
     implicit val ctx = system.dispatcher
     Retry.blocking("Check for exit", Int.MaxValue, 1.micro, RichRuntime.DefaultExitDelay.plus(1.second)) {
       if (ExitDisabledTest.exitsCalled(_.contains(desiredCode))) {
-        println("desiredCode found")
         ExitDisabledTest.exitsCalled(e => e.remove(e.indexOf(desiredCode)))
-        println("desiredCode removed")
         true
       } else {
-        println("throwing an exception, since desiredCode has not been found")
         throw new Exception("Did not find desired exit code.")
       }
     }.recover {
-      case NonFatal(ex) =>
-        println("got non-fatal exception: $ex")
-        false
+      case NonFatal(_) => false
     }
   }
 }

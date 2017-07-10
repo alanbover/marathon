@@ -5,14 +5,14 @@ package core.election.impl
 import akka.event.EventStream
 import mesosphere.AkkaUnitTest
 import mesosphere.chaos.http.HttpConf
-import mesosphere.marathon.core.base.{LifecycleState, RichRuntime}
-import mesosphere.marathon.core.election.{ElectionCandidate, ElectionService, LocalLeadershipEvent}
+import mesosphere.marathon.core.base.{ LifecycleState, RichRuntime }
+import mesosphere.marathon.core.election.{ ElectionCandidate, ElectionService, LocalLeadershipEvent }
 import mesosphere.marathon.test.ExitDisabledTest
 import org.mockito.Mockito
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.scalatest.concurrent.Eventually
-import org.scalatest.time.{Seconds, Span}
+import org.scalatest.time.{ Seconds, Span }
 
 class PseudoElectionServiceTest extends AkkaUnitTest with Eventually with ExitDisabledTest {
   override implicit lazy val patienceConfig: PatienceConfig = PatienceConfig(timeout = Span(10, Seconds))
@@ -63,34 +63,34 @@ class PseudoElectionServiceTest extends AkkaUnitTest with Eventually with ExitDi
       exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
     }
 
-//    "events are sent" in {
-//      val f = new Fixture
-//      val events = mock[EventStream]
-//
-//      val electionService = new PseudoElectionService(f.hostPort, system, events, f.lifecycle)
-//
-//      Given("this instance is becoming a leader")
-//      electionService.offerLeadership(f.candidate)
-//      eventually { electionService.currentCandidate.get should equal(Some(f.candidate)) }
-//
-//      Then("the candidate is called, then an event is published")
-//      val order = Mockito.inOrder(events, f.candidate)
-//      eventually { order.verify(f.candidate).startLeadership() }
-//      eventually { order.verify(events).publish(LocalLeadershipEvent.ElectedAsLeader) }
-//
-//      Given("this instance is abdicating")
-//      electionService.abdicateLeadership()
-//
-//      Then("the candidate is called, then an event is published")
-//      eventually { order.verify(f.candidate).stopLeadership() }
-//      eventually { order.verify(events).publish(LocalLeadershipEvent.Standby) }
-//
-//      Then("the candidate is set to None")
-//      eventually { electionService.currentCandidate.get should be(None) }
-//
-//      Then("then Marathon stops")
-//      exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
-//    }
+    "events are sent" in {
+      val f = new Fixture
+      val events = mock[EventStream]
+
+      val electionService = new PseudoElectionService(f.hostPort, system, events, f.lifecycle)
+
+      Given("this instance is becoming a leader")
+      electionService.offerLeadership(f.candidate)
+      eventually { electionService.currentCandidate.get should equal(Some(f.candidate)) }
+
+      Then("the candidate is called, then an event is published")
+      val order = Mockito.inOrder(events, f.candidate)
+      eventually { order.verify(f.candidate).startLeadership() }
+      eventually { order.verify(events).publish(LocalLeadershipEvent.ElectedAsLeader) }
+
+      Given("this instance is abdicating")
+      electionService.abdicateLeadership()
+
+      Then("the candidate is called, then an event is published")
+      eventually { order.verify(f.candidate).stopLeadership() }
+      eventually { order.verify(events).publish(LocalLeadershipEvent.Standby) }
+
+      Then("the candidate is set to None")
+      eventually { electionService.currentCandidate.get should be(None) }
+
+      Then("then Marathon stops")
+      exitCalled(RichRuntime.FatalErrorSignal).futureValue should be(true)
+    }
 
     "Marathon stops after leadership abdication while being a leader" in {
       val f = new Fixture
