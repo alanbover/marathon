@@ -38,25 +38,29 @@ def zipSandboxLogs(): Unit = {
 }
 
 @main
-def uploadPackagesToS3(): Unit = utils.stage("Upload Packages") {
-  // || file.ext == "sha1" removed, separated out
+/**
+ * Upload different Marathon tarballs and their cha1 checksum to S3.
+ *
+ * @return Map from tarball type to artifact description.
+ */
+def uploadPackagesToS3(): Map[String, awsClient.Artifact]= utils.stage("Upload Packages") {
+  import scala.collection.breakOut
+
   (ls! PACKAGE_DIR |? (file => file.ext == "tgz" || file.ext == "txz" ))
-    .foreach(awsClient.archiveArtifact)
+    .map( file => file.ext -> awsClient.archiveArtifact(file) )(breakOut)
 }
 
 @main
-def createAndUploadPackages(): Unit = {
-  createPackages()
-  uploadPackagesToS3()
-  createLinuxPackages()
-}
-
 /**
- * Creates SHA-1 for all files in the package directory
+ * Packages Marathon and uploads its artifacts alongside sha1 checksum to S3.
+ *
+ * @return Map for package typ to its artifact description.
  */
-def createPackageSha1s(): Unit = {
-  (ls! PACKAGE_DIR |? (file => file.ext == "tgz" || file.ext == "txz"))
-    .foreach(fileUtil.writeSha1ForFile)
+def createAndUploadPackages(): Map[String, awsClient.Artifact] = {
+  createPackages()
+  val artifacts = uploadPackagesToS3()
+  createLinuxPackages()
+  artifacts
 }
 
 /**
@@ -66,7 +70,6 @@ def createPackageSha1s(): Unit = {
 @main
 def createPackages(): Unit = utils.stage("Package") {
   %('sbt, "universal:packageZipTarball", "universal:packageXzTarball")
-  createPackageSha1s()
 }
 
 /**
@@ -102,13 +105,13 @@ def phabricator(): Unit = {
 
 /**
  * Update DC/OS repository and triggers build of update DC/OS image.
+ *
+ * @param artifactUrl Url for the saved Marathon artifact.
+ * @param sha1 The sah1 checksum of the artifact.
  */
-def updateDcosImage(): Unit = {
-//  val artifactUrl = ???
-//  val sha1 = ???
-//  val verison = "1.5.0 ??"
-//
-//  upgrade.updateMarathon(artifactUrl, sha1, s"Bump Marathon to $version")
+@main
+def updateDcosImage(artifactUrl: String, sha1: String): Unit = {
+  upgrade.updateMarathon(artifactUrl, sha1, s"Change Marathon to $artifactUrl")
 }
 
 /**
@@ -127,7 +130,11 @@ def jenkins(): Unit = {
     zipSandboxLogs()    // Try to archive logs in any case
   }
 
-  createAndUploadPackages()
+  val artifacts = createAndUploadPackages()
 
-  // if(isMasterBuild) updateDcosImage()
+  println(s"Master: ${utils.isMasterBuild}, GIT_BRANCH=${sys.env("GIT_BRANCH")}")
+  if(utils.isMasterBuild) {
+    val artifact = artifacts("tgz")
+    updateDcosImage(artifact.downloadUrl, artifact.sha1)
+  }
 }
