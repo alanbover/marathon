@@ -349,7 +349,7 @@ class BackupRestoreIntegrationTest extends LeaderIntegrationTest {
 @IntegrationTest
 class DeleteAppAndBackupIntegrationTest extends LeaderIntegrationTest {
 
-  val zkTimeout = 2000L
+  val zkTimeout = 2500L
   override val marathonArgs: Map[String, String] = Map(
     "zk_timeout" -> s"$zkTimeout"
   )
